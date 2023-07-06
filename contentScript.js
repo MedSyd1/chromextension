@@ -1,55 +1,63 @@
 (() => {
-    let youtubeLeftControls, youtubePlayer;
-    let currentVideo = "";
-    let currentVideoBookmarks = [];
+  let youtubeLeftPlayer, youtubePlayer;
+  let currentVideo = "";
+  let currentVideoBookmarks = [];
+  chrome.runtime.onMessage.addListener((obj, sender, resoponse) => {
+    const { value, type, videoId } = obj;
+    if (type === "NEW") {
+      currentVideo = videoId;
+      newVideoLoaded();
+    } else if (type === "PLAY") {
+      document.getElementsByClassName("video-stream")[0].currentTime = value;
+    } else if (type === "DELETE") {
+      currentVideoBookmarks = currentVideoBookmarks.filter((b) => b.time != value);
+      chrome.storage.sync.set({ [currentVideo]: JSON.stringify(currentVideoBookmarks) });
 
-    chrome.runtime.onMessage.addListener((obj, sender, response) => {
-        const { type, value, videoId } = obj;
+      response(currentVideoBookmarks);
+    }
+  });
 
-        if (type === "NEW") {
-            currentVideo = videoId;
-            newVideoLoaded();
-        }
+  const fetchBookMarks = () => {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get([currentVideo], (obj) => {
+        resolve(obj[currentVideo] ? JSON.parse(obj[currentVideo]) : []);
+      });
     });
+  };
 
-    const newVideoLoaded = () => {
-        const bookmarkBtnExists = document.getElementsByClassName("bookmark-btn")[0];
-        console.log(bookmarkBtnExists);
-
-        if (!bookmarkBtnExists) {
-            const bookmarkBtn = document.createElement("img");
-
-            bookmarkBtn.src = chrome.runtime.getURL("assets/bookmark.png");
-            bookmarkBtn.className = "ytp-button " + "bookmark-btn";
-            bookmarkBtn.title = "Click to bookmark current timestamp";
-
-            youtubeLeftControls = document.getElementsByClassName("ytp-left-controls")[0];
-            youtubePlayer = document.getElementsByClassName("video-stream")[0];
-            
-            youtubeLeftControls.append(bookmarkBtn);
-            bookmarkBtn.addEventListener("click", addNewBookmarkEventHandler);
-        }
+  const newVideoLoaded = async () => {
+    const bookmarkbtnexist = document.getElementsByClassName("bookmark-btn")[0];
+    youtubeLeftPlayer = document.getElementsByClassName("ytp-left-controls")[0];
+    youtubePlayer = document.getElementsByClassName("video-stream")[0];
+    currentVideoBookmarks = await fetchBookMarks();
+    if (!bookmarkbtnexist) {
+      const bookmark = document.createElement("img");
+      bookmark.src = chrome.runtime.getURL("./assets/bookmark.png");
+      bookmark.className = "ytp-button " + "bookmark-btn";
+      youtubeLeftPlayer.appendChild(bookmark);
+      bookmark.addEventListener("click", addNewBookMarkEventHandler);
     }
+  };
+  const addNewBookMarkEventHandler = async () => {
+    currentVideoBookmarks = await fetchBookMarks();
+    console.log(currentVideoBookmarks);
+    const newBookmark = {
+      time: youtubePlayer.currentTime,
+      desc: "bookmark at " + getTime(youtubePlayer.currentTime),
+    };
+    chrome.storage.sync.set({
+      [currentVideo]: JSON.stringify(
+        [...currentVideoBookmarks, newBookmark].sort((a, b) => {
+          a.time - b.time;
+        })
+      ),
+    });
+  };
 
-    const addNewBookmarkEventHandler = () => {
-        const currentTime = youtubePlayer.currentTime;
-        const newBookmark = {
-            time: currentTime,
-            desc: "Bookmark at " + getTime(currentTime),
-        };
-        console.log(newBookmark);
-
-        chrome.storage.sync.set({
-            [currentVideo]: JSON.stringify([...currentVideoBookmarks, newBookmark].sort((a, b) => a.time - b.time))
-        });
-    }
-
-    newVideoLoaded();
+  const getTime = (t) => {
+    let date = new Date(0);
+    date.setSeconds(t);
+    return date.toISOString().substr(11, 8);
+  };
+  newVideoLoaded();
 })();
-
-const getTime = t => {
-    var date = new Date(0);
-    date.setSeconds(1);
-
-    return date.toISOString().substr(11, 0);
-}
